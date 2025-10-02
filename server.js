@@ -1,36 +1,43 @@
 const express = require('express');
-// D�ZELTLD: 'http' mod�l�n�n doru ekilde y�klenmesini saladk
 const http = require('http'); 
 const { Server } = require('socket.io');
 const path = require('path');
 
-// Render.com'un atad portu veya yerel gelitirme i�in 3000'i kullan
+// Render.com'un atadığı portu veya yerel geliştirme için 3000'i kullan
 const PORT = process.env.PORT || 3000;
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+
+// Socket.IO'yu CORS ayarları ile başlat
+// Render URL'nizden gelen bağlantılara izin verir
+const io = new Server(server, {
+    cors: {
+        origin: "*", // Tüm kaynaklardan gelen bağlantılara izin ver
+        methods: ["GET", "POST"]
+    }
+});
 
 const rooms = {};
 
-// Statik dosyalar (index.html, room.html vb.) sun
+// Statik dosyaları (index.html, room.html vb.) sun
 app.use(express.static(path.join(__dirname)));
 
 io.on('connection', (socket) => {
-    console.log(`Yeni kullanc baland: ${socket.id}`);
+    console.log(`Yeni kullanıcı bağlandı: ${socket.id}`);
 
-    // --- ODAYA KATILMA LEV ---
+    // --- ODAYA KATILMA İŞLEVİ ---
     socket.on('joinRoom', ({ roomCode, username, videoUrl }) => {
-        // Kullanc ad kontrol�
+        // Kullanıcı adı kontrolü
         if (!username) {
-            username = 'AnonimKullanc';
+            username = 'AnonimKullanıcı';
         }
         
         socket.join(roomCode);
         socket.room = roomCode;
         socket.username = username;
 
-        // Oday balat veya g�ncelle
+        // Odayı başlat veya güncelle
         if (!rooms[roomCode]) {
             rooms[roomCode] = {
                 users: {},
@@ -44,17 +51,17 @@ io.on('connection', (socket) => {
         
         rooms[roomCode].users[socket.id] = { username };
 
-        // Kullancya mevcut oda durumunu g�nder
+        // Kullanıcıya mevcut oda durumunu gönder
         socket.emit('roomState', rooms[roomCode].state);
         
-        // Odaya katlm mesajn ve g�ncel kullanc listesini yaynla
+        // Odaya katılım mesajını ve güncel kullanıcı listesini yayınla
         const users = Object.values(rooms[roomCode].users).map(u => u.username);
         io.to(roomCode).emit('userJoined', { username, users });
         
-        console.log(`${username} odaya katld: ${roomCode}`);
+        console.log(`${username} odaya katıldı: ${roomCode}`);
     });
 
-    // --- VDEO KONTROL� LEVLER ---
+    // --- VİDEO KONTROLÜ İŞLEVLERİ ---
     socket.on('videoPlay', (time) => {
         if (!socket.room || !rooms[socket.room]) return;
         rooms[socket.room].state.isPlaying = true;
@@ -75,7 +82,7 @@ io.on('connection', (socket) => {
         socket.to(socket.room).emit('syncSeek', time);
     });
     
-    // --- SOHBET LEV ---
+    // --- SOHBET İŞLEVİ ---
     socket.on('chatMessage', (message) => {
         if (!socket.room) return;
         const msgData = {
@@ -86,7 +93,7 @@ io.on('connection', (socket) => {
         io.to(socket.room).emit('newChatMessage', msgData);
     });
 
-    // --- BALANTI KESLME LEV ---
+    // --- BAĞLANTI KESİLME İŞLEVİ ---
     socket.on('disconnect', () => {
         if (socket.room && rooms[socket.room] && rooms[socket.room].users[socket.id]) {
             const username = socket.username;
@@ -100,10 +107,11 @@ io.on('connection', (socket) => {
                 console.log(`Oda temizlendi: ${socket.room}`);
             }
         }
-        console.log(`Kullanc ayrld: ${socket.id}`);
+        console.log(`Kullanıcı ayrıldı: ${socket.id}`);
     });
 });
 
 server.listen(PORT, () => {
-    console.log(`Sunucu port ${PORT} adresinde �alyor`);
+    console.log(`Sunucu port ${PORT} adresinde başarıyla çalışıyor`);
 });
+              
