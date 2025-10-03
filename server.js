@@ -27,8 +27,9 @@ io.on('connection', (socket) => {
     console.log(`Yeni kullanıcı bağlandı: ${socket.id}`);
 
     // --- ODAYA KATILMA İŞLEVİ ---
+    // Oda kodu, kullanıcı adı ve video URL'si istemciden gelir.
     socket.on('joinRoom', ({ roomCode, username, videoUrl }) => {
-        // Kullanıcı adı kontrolü
+        
         if (!username) {
             username = 'AnonimKullanıcı';
         }
@@ -37,13 +38,15 @@ io.on('connection', (socket) => {
         socket.room = roomCode;
         socket.username = username;
 
-        // Odayı başlat veya güncelle
+        // Odayı başlat veya mevcut odayı kontrol et
         if (!rooms[roomCode]) {
+            // ODA YENİ OLUŞTURULUYOR: Video URL'sini roomData'dan alıp sakla
             rooms[roomCode] = {
                 users: {},
                 state: {
                     isPlaying: false,
                     currentTime: 0,
+                    // Oda kurucusunun gönderdiği video URL'sini kaydet
                     videoUrl: videoUrl 
                 }
             };
@@ -51,7 +54,8 @@ io.on('connection', (socket) => {
         
         rooms[roomCode].users[socket.id] = { username };
 
-        // Kullanıcıya mevcut oda durumunu gönder
+        // Kullanıcıya mevcut oda durumunu GÖNDER
+        // NOT: Buradaki state objesi, videoUrl'yi de içerir.
         socket.emit('roomState', rooms[roomCode].state);
         
         // Odaya katılım mesajını ve güncel kullanıcı listesini yayınla
@@ -114,4 +118,3 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`Sunucu port ${PORT} adresinde başarıyla çalışıyor`);
 });
-              
