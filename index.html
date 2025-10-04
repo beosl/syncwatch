@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StreamSync - Watch Party App</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3B82F6',
+                        secondary: '#8B5CF6'
+                    }
+                }
+            }
+        }
+    </script>
+    <script src="https://unpkg.com/feather-icons"></script>
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.net.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body class="bg-gradient-to-br from-gray-900 to-black min-h-screen text-white">
+    <div id="vanta-bg"></div>
+    
+    <nav class="relative z-10 p-6">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <i data-feather="video" class="w-8 h-8 text-primary"></i>
+                <span class="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">StreamSync</span>
+            </div>
+            <div class="flex space-x-4">
+                <button class="px-4 py-2 bg-primary hover:bg-blue-600 rounded-lg transition duration-300">Login</button>
+                <button class="px-4 py-2 bg-secondary hover:bg-purple-600 rounded-lg transition duration-300">Sign Up</button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="relative z-10 container mx-auto px-6 py-16 text-center">
+        <h1 class="text-5xl md:text-7xl font-bold mb-6">
+            Watch Together,
+            <span class="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">Anywhere</span>
+        </h1>
+        <p class="text-xl md:text-2xl text-gray-300 mb-8 max-w-3xl mx-auto">
+            Create virtual watch parties with friends. Stream videos together and chat in real-time. Your personal cinema, reimagined.
+        </p>
+        
+        <div class="flex flex-col md:flex-row gap-4 justify-center mb-12">
+            <button onclick="createRoom()" class="px-8 py-4 bg-primary hover:bg-blue-600 rounded-xl text-lg font-semibold transition duration-300 transform hover:scale-105">
+                <i data-feather="plus" class="inline w-5 h-5 mr-2"></i>
+                Create Room
+            </button>
+            <button onclick="joinRoom()" class="px-8 py-4 bg-secondary hover:bg-purple-600 rounded-xl text-lg font-semibold transition duration-300 transform hover:scale-105">
+                <i data-feather="users" class="inline w-5 h-5 mr-2"></i>
+                Join Room
+            </button>
+        </div>
+
+        <div class="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+            <div class="bg-gray-800/50 backdrop-blur-lg p-6 rounded-2xl border border-gray-700">
+                <i data-feather="video" class="w-12 h-12 text-primary mb-4"></i>
+                <h3 class="text-xl font-bold mb-2">Stream Anything</h3>
+                <p class="text-gray-300">Support for M3U8 and MP4 files. Paste any video URL and watch together.</p>
+            </div>
+            <div class="bg-gray-800/50 backdrop-blur-lg p-6 rounded-2xl border border-gray-700">
+                <i data-feather="message-circle" class="w-12 h-12 text-secondary mb-4"></i>
+                <h3 class="text-xl font-bold mb-2">Live Chat & Voice</h3>
+                <p class="text-gray-300">Text chat and voice calls to share reactions in real-time.</p>
+            </div>
+            <div class="bg-gray-800/50 backdrop-blur-lg p-6 rounded-2xl border border-gray-700">
+                <i data-feather="clock" class="w-12 h-12 text-primary mb-4"></i>
+                <h3 class="text-xl font-bold mb-2">Sync Playback</h3>
+                <p class="text-gray-300">Perfect synchronization ensures everyone watches at the same time.</p>
+            </div>
+        </div>
+    </main>
+
+    <div id="createModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-2xl p-8 max-w-md w-full border border-gray-700">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-2xl font-bold">Create Watch Party</h3>
+                <button onclick="closeCreateModal()" class="text-gray-400 hover:text-white">
+                    <i data-feather="x"></i>
+                </button>
+            </div>
+            <form id="createForm" onsubmit="handleCreateRoom(event)">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Room Name</label>
+                        <input type="text" required class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-primary">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Video URL (M3U8/MP4)</label>
+                        <input type="url" required class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-primary" placeholder="Örn: https://example.com/video.mp4">
+                    </div>
+                    <button type="submit" class="w-full bg-primary hover:bg-blue-600 py-3 rounded-lg font-semibold transition duration-300">
+                        Create Room
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="joinModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-2xl p-8 max-w-md w-full border border-gray-700">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-2xl font-bold">Join Watch Party</h3>
+                <button onclick="closeJoinModal()" class="text-gray-400 hover:text-white">
+                    <i data-feather="x"></i>
+                </button>
+            </div>
+            <form id="joinForm" onsubmit="handleJoinRoom(event)">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Room Code</label>
+                        <input type="text" required class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-primary" placeholder="Örn: ABC123">
+                    </div>
+                    <button type="submit" class="w-full bg-secondary hover:bg-purple-600 py-3 rounded-lg font-semibold transition duration-300">
+                        Join Room
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Vanta.js background
+        VANTA.NET({
+            el: "#vanta-bg",
+            mouseControls: true,
+            touchControls: true,
+            gyroControls: false,
+            minHeight: 200.00,
+            minWidth: 200.00,
+            scale: 1.00,
+            scaleMobile: 1.00,
+            color: 0x3b82f6,
+            backgroundColor: 0x111827,
+            points: 12.00,
+            maxDistance: 22.00,
+            spacing: 18.00
+        });
+
+        // Modal functions
+        function createRoom() {
+            document.getElementById('createModal').classList.remove('hidden');
+            document.getElementById('joinModal').classList.add('hidden'); 
+        }
+
+        function joinRoom() {
+            document.getElementById('joinModal').classList.remove('hidden');
+            document.getElementById('createModal').classList.add('hidden'); 
+        }
+
+        function closeCreateModal() {
+            document.getElementById('createModal').classList.add('hidden');
+        }
+
+        function closeJoinModal() {
+            document.getElementById('joinModal').classList.add('hidden');
+        }
+
+        function getUsername() {
+            let username = prompt("Lütfen bir kullanıcı adı girin:");
+            while (!username || username.trim() === "") {
+                username = prompt("Kullanıcı adı gerekli. Lütfen bir ad girin:");
+            }
+            return username.trim();
+        }
+
+        function handleCreateRoom(event) {
+            event.preventDefault();
+            const form = document.getElementById('createForm');
+            const roomName = form.elements[0].value;
+            const videoUrl = form.elements[1].value;
+            const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase(); 
+
+            const username = getUsername();
+            
+            localStorage.setItem('roomData', JSON.stringify({
+                code: roomCode,
+                name: roomName,
+                url: videoUrl, // Video URL'sini localStorage'a kaydet
+                action: 'create'
+            }));
+            localStorage.setItem('username', username);
+            window.location.href = 'room.html';
+        }
+
+        function handleJoinRoom(event) {
+            event.preventDefault();
+            const form = document.getElementById('joinForm');
+            const roomCode = form.elements[0].value.toUpperCase();
+            
+            const username = getUsername();
+
+            localStorage.setItem('roomData', JSON.stringify({
+                code: roomCode,
+                // Odaya katılırken video URL'si göndermeye gerek yoktur. Sunucu sağlar.
+                action: 'join'
+            }));
+            localStorage.setItem('username', username);
+            window.location.href = 'room.html';
+        }
+
+        // Initialize feather icons
+        feather.replace();
+    </script>
+</body>
+</html>

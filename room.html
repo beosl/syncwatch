@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watch Party Room - StreamSync</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3B82F6',
+                        secondary: '#8B5CF6'
+                    }
+                }
+            }
+        }
+    </script>
+    <script src="https://unpkg.com/feather-icons"></script>
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <header class="bg-gray-800 border-b border-gray-700">
+        <div class="container mx-auto px-6 py-4">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center space-x-4">
+                    <a href="index.html" class="flex items-center space-x-2">
+                        <i data-feather="video" class="w-6 h-6 text-primary"></i>
+                        <span class="text-xl font-bold">StreamSync</span>
+                    </a>
+                    <div class="bg-gray-700 px-3 py-1 rounded-full text-sm">
+                        Room: <span id="roomCode" class="font-mono">...</span>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button id="voiceToggle" class="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition duration-300" title="Sesli Sohbet (u anda sadece görsel)">
+                        <i data-feather="mic" class="w-5 h-5"></i>
+                    </button>
+                    <a href="index.html" class="p-2 bg-red-500 hover:bg-red-600 rounded-lg transition duration-300">
+                        <i data-feather="log-out" class="w-5 h-5"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-6 py-6">
+        <div class="flex flex-col lg:flex-row gap-6">
+            <div class="flex-1">
+                <div class="bg-black rounded-2xl overflow-hidden aspect-video">
+                    <video id="videoPlayer" class="w-full h-full" controls>
+                        Your browser does not support the video tag.
+                    </video>
+                </div>
+                
+                <div class="bg-gray-800 rounded-2xl p-4 mt-4">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold" id="roomNameDisplay">...</h3>
+                        <div class="flex space-x-2">
+                            <button onclick="copyRoomCode()" class="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg">
+                                <i data-feather="share-2" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center space-x-4">
+                        <button id="playPause" class="p-3 bg-primary hover:bg-blue-600 rounded-full">
+                            <i data-feather="play" class="w-5 h-5"></i>
+                        </button>
+                        <div class="flex-1">
+                            <div class="flex justify-between text-sm text-gray-400 mb-1">
+                                <span id="currentTime">0:00</span>
+                                <span id="duration">0:00</span>
+                            </div>
+                            <input type="range" id="progressBar" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" min="0" max="100" value="0">
+                        </div>
+                        <button class="p-3 bg-gray-700 hover:bg-gray-600 rounded-full">
+                            <i data-feather="volume-2" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="w-full lg:w-96">
+                <div class="bg-gray-800 rounded-2xl h-[600px] flex flex-col">
+                    <div class="p-4 border-b border-gray-700">
+                        <h3 class="text-lg font-semibold">Chat</h3>
+                        <div class="text-sm text-gray-400" id="participantCount">0 participants online</div>
+                    </div>
+                    
+                    <div id="chatMessages" class="flex-1 p-4 space-y-4 overflow-y-auto">
+                        </div>
+                    
+                    <div class="p-4 border-t border-gray-700">
+                        <div class="flex space-x-2">
+                            <input type="text" id="messageInput" placeholder="Type a message..." class="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-primary">
+                            <button id="sendMessage" class="px-4 py-2 bg-primary hover:bg-blue-600 rounded-lg transition duration-300">
+                                <i data-feather="send" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-gray-800 rounded-2xl p-4 mt-4">
+                    <h4 class="font-semibold mb-3">Participants</h4>
+                    <div id="participantsList" class="space-y-2">
+                        </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const video = document.getElementById('videoPlayer');
+        const playPauseBtn = document.getElementById('playPause');
+        const progressBar = document.getElementById('progressBar');
+        const currentTimeDisplay = document.getElementById('currentTime');
+        const durationDisplay = document.getElementById('duration');
+        const messageInput = document.getElementById('messageInput');
+        const sendMessageBtn = document.getElementById('sendMessage');
+        const chatMessages = document.getElementById('chatMessages');
+        const roomCodeDisplay = document.getElementById('roomCode');
+        const roomNameDisplay = document.getElementById('roomNameDisplay');
+        const participantsList = document.getElementById('participantsList');
+        const participantCount = document.getElementById('participantCount');
+        const voiceToggle = document.getElementById('voiceToggle');
+
+        // --- SOCKET.IO ve ODA AYARLARI ---
+        const socket = io();
+        const roomData = JSON.parse(localStorage.getItem('roomData'));
+        const username = localStorage.getItem('username');
+
+        if (!roomData || !username) {
+            alert("Oda bilgisi veya kullanc ad eksik. Ana sayfaya yönlendiriliyorsunuz.");
+            window.location.href = 'index.html';
+            return;
+        }
+
+        const roomCode = roomData.code;
+        const roomName = roomData.name || 'Watch Party Room';
+        // Oda oluturulurken verilen URL veya varsaylan URL
+        const initialVideoUrl = roomData.url || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'; 
+
+        roomCodeDisplay.textContent = roomCode;
+        roomNameDisplay.textContent = roomName;
+
+
+        // Odaya katlma istei gönder
+        socket.emit('joinRoom', { 
+            roomCode: roomCode, 
+            username: username, 
+            // Oda kurulurken bile, sunucu tarafnda ayn video URL'sinin saklanmas için gönderilir.
+            videoUrl: initialVideoUrl 
+        });
+
+        // Oday paylama butonu
+        function copyRoomCode() {
+            navigator.clipboard.writeText(roomCode)
+                .then(() => {
+                    alert(`Oda Kodu kopyaland: ${roomCode}. Arkadalarnla payla!`);
+                })
+                .catch(err => {
+                    console.error('Kopyalama baarsz oldu:', err);
+                });
+        }
+
+        // --- VDEO OYNATICI VE KONTROLLER ---
+
+        // YENLEME: Oda durumu alndnda videoyu ayarla ve senkronize et
+        socket.on('roomState', (state) => {
+            // Sunucudan gelen, odann kesin video URL'si budur.
+            const finalVideoUrl = state.videoUrl; 
+            
+            if (!finalVideoUrl) return; 
+
+            // Video yüklendiinde çalacak fonksiyon
+            const handleMetadataLoad = () => {
+                applyRoomState(state);
+            };
+
+            // YÜKLEME MANTII: Video URL'si deimedikçe tekrar yükleme.
+            // video.src, taraycda encoding nedeniyle bazen tam elemez, bu yüzden 'includes' kullanrz.
+            if (!video.src.includes(finalVideoUrl)) {
+                // Önceki yüklemelerden kalan event listener'lar kaldr
+                video.removeEventListener('loadedmetadata', handleMetadataLoad);
+
+                if (finalVideoUrl.includes('.m3u8') && Hls.isSupported()) {
+                    const hls = new Hls();
+                    hls.loadSource(finalVideoUrl); 
+                    hls.attachMedia(video);
+                    hls.on(Hls.Events.MANIFEST_PARSED, handleMetadataLoad);
+                } else {
+                    // MP4 veya dier dorudan formatlar
+                    video.src = finalVideoUrl; 
+                    // metadata yüklendiinde senkronizasyonu uygula
+                    video.addEventListener('loadedmetadata', handleMetadataLoad, { once: true });
+                }
+            } else if (video.readyState >= 2) {
+                // Video zaten yüklüyse, sadece durumu senkronize et
+                applyRoomState(state);
+            }
+        });
+
+        function applyRoomState(state) {
+            // metadata yüklü deilse, henüz hazr deiliz demektir
+            if (video.readyState < 2) return; 
+            
+            // Zaman uygula ve küçük bir gecikme telafisi yap
+            video.currentTime = state.currentTime + 0.5; 
+            durationDisplay.textContent = formatTime(video.duration);
+            
+            // Oynatma durumunu uygula
+            if (state.isPlaying) {
+                // Otomatik oynatma politikasn atlamak için catch blou ekle
+                video.play().catch(e => {
+                    console.error("Oynatma otomatik balatlamad:", e);
+                    video.pause(); // Balatlamazsa durdurulmu olarak kalr
+                });
+                updatePlayPauseButton('pause');
+            } else {
+                video.pause();
+                updatePlayPauseButton('play');
+            }
+        }
+        
+        // 2. Kontrol butonlar
+        let isSeeking = false; 
+        
+        playPauseBtn.addEventListener('click', () => {
+            if (video.paused) {
+                video.play();
+                socket.emit('videoPlay', video.currentTime);
+            } else {
+                video.pause();
+                socket.emit('videoPause', video.currentTime);
+            }
+        });
+
+        progressBar.addEventListener('mousedown', () => {
+            isSeeking = true;
+            video.pause(); 
+        });
+        
+        progressBar.addEventListener('mouseup', () => {
+            isSeeking = false;
+            const time = (progressBar.value / 100) * video.duration;
+            video.currentTime = time;
+            socket.emit('videoSeek', time); 
+        });
+
+        progressBar.addEventListener('input', () => {
+            if (isSeeking) {
+                const time = (progressBar.value / 100) * video.duration;
+                currentTimeDisplay.textContent = formatTime(time);
+            }
+        });
+
+
+        // 3. Senkronizasyon Olaylar (Sunucudan gelenler)
+        socket.on('syncPlay', (time) => {
+            video.currentTime = time;
+            video.play().catch(e => console.error("Sync Play hatas:", e));
+            updatePlayPauseButton('pause');
+        });
+
+        socket.on('syncPause', (time) => {
+            video.currentTime = time;
+            video.pause();
+            updatePlayPauseButton('play');
+        });
+
+        socket.on('syncSeek', (time) => {
+            if (!isSeeking) {
+                video.currentTime = time;
+            }
+        });
+
+        // 4. Zaman ve lerleme Çubuu Güncellemeleri
+        video.addEventListener('timeupdate', () => {
+            if (!isSeeking) {
+                const progress = (video.currentTime / video.duration) * 100;
+                progressBar.value = progress;
+            }
+            currentTimeDisplay.textContent = formatTime(video.currentTime);
+        });
+
+        // Sesli Sohbet Yer Tutucusu
+        let voiceEnabled = false;
+        voiceToggle.addEventListener('click', () => {
+            voiceEnabled = !voiceEnabled;
+            voiceToggle.classList.toggle('bg-green-500', voiceEnabled);
+            voiceToggle.classList.toggle('bg-gray-700', !voiceEnabled);
+            console.log(`Sesli Sohbet: ${voiceEnabled ? 'AÇIK' : 'KAPALI'}`);
+        });
+
+        // --- SOHBET LEV ---
+
+        sendMessageBtn.addEventListener('click', sendChatMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendChatMessage();
+            }
+        });
+
+        function sendChatMessage() {
+            const message = messageInput.value.trim();
+            if (message) {
+                socket.emit('chatMessage', message); 
+                messageInput.value = '';
+            }
+        }
+
+        socket.on('newChatMessage', (data) => {
+            const messageElement = document.createElement('div');
+            messageElement.className = 'flex items-start space-x-3';
+            
+            const isMe = data.username === username;
+            const initial = data.username.substring(0, 2).toUpperCase();
+            const bgColor = isMe ? 'bg-green-500' : 'bg-primary';
+
+            messageElement.innerHTML = `
+                <div class="w-8 h-8 ${bgColor} rounded-full flex items-center justify-center">
+                    <span class="text-xs font-bold">${initial}</span>
+                </div>
+                <div class="flex-1">
+                    <div class="flex items-baseline space-x-2">
+                        <span class="font-semibold">${isMe ? 'Sen' : data.username}</span>
+                        <span class="text-xs text-gray-400">${data.time}</span>
+                    </div>
+                    <p class="text-sm">${data.message}</p>
+                </div>
+            `;
+            chatMessages.appendChild(messageElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        });
+
+
+        // --- KATILIMCI LSTES YÖNETM ---
+
+        socket.on('userJoined', (data) => {
+            updateParticipantsList(data.users);
+            addSystemMessage(`${data.username} odaya katld.`);
+        });
+
+        socket.on('userLeft', (data) => {
+            updateParticipantsList(data.users);
+            addSystemMessage(`${data.username} odadan ayrld.`);
+        });
+
+        function updateParticipantsList(users) {
+            participantsList.innerHTML = '';
+            participantCount.textContent = `${users.length} participants online`;
+
+            users.forEach(user => {
+                const isMe = user === username;
+                const initial = user.substring(0, 2).toUpperCase();
+                const bgColor = isMe ? 'bg-green-500' : 'bg-primary';
+
+                const participantElement = `
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-8 h-8 ${bgColor} rounded-full flex items-center justify-center">
+                                <span class="text-xs font-bold">${initial}</span>
+                            </div>
+                            <span>${user} ${isMe ? '(Sen)' : ''}</span>
+                        </div>
+                        <div class="w-2 h-2 bg-green-500 rounded-full" title="Online"></div>
+                    </div>
+                `;
+                participantsList.insertAdjacentHTML('beforeend', participantElement);
+            });
+        }
+        
+        function addSystemMessage(message) {
+            const systemMessage = document.createElement('div');
+            systemMessage.className = 'text-center text-xs text-gray-500 italic';
+            systemMessage.textContent = message;
+            chatMessages.appendChild(systemMessage);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+
+        // --- YARDIMCI FONKSYONLAR ---
+
+        function formatTime(seconds) {
+            if (isNaN(seconds) || seconds < 0) return '0:00';
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+        }
+
+        function updatePlayPauseButton(state) {
+            if (state === 'play') {
+                playPauseBtn.innerHTML = '<i data-feather="play" class="w-5 h-5"></i>';
+            } else {
+                playPauseBtn.innerHTML = '<i data-feather="pause" class="w-5 h-5"></i>';
+            }
+            feather.replace(); 
+        }
+
+        // Initialize feather icons
+        feather.replace();
+    </script>
+</body>
+</html>
