@@ -37,7 +37,7 @@
                     </div>
                 </div>
                 <div class="flex items-center space-x-4">
-                    <button id="voiceToggle" class="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition duration-300" title="Sesli Sohbet (Şu anda sadece görsel)">
+                    <button id="voiceToggle" class="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition duration-300" title="Sesli Sohbet (u anda sadece görsel)">
                         <i data-feather="mic" class="w-5 h-5"></i>
                     </button>
                     <a href="index.html" class="p-2 bg-red-500 hover:bg-red-600 rounded-lg transition duration-300">
@@ -135,111 +135,100 @@
         const username = localStorage.getItem('username');
 
         if (!roomData || !username) {
-            alert("Oda bilgisi veya kullanıcı adı eksik. Ana sayfaya yönlendiriliyorsunuz.");
+            alert("Oda bilgisi veya kullanc ad eksik. Ana sayfaya yönlendiriliyorsunuz.");
             window.location.href = 'index.html';
-            return;
         }
 
         const roomCode = roomData.code;
         const roomName = roomData.name || 'Watch Party Room';
-        // Oda oluşturulurken verilen URL veya varsayılan URL (Odaya katılanlarda sadece yer tutucu olarak kalacak)
-        const initialVideoUrl = roomData.url || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'; 
+        // Varsaylan video: BigBuckBunny.mp4. Oda oluturulurken verilen URL kullanlacak.
+        const videoUrl = roomData.url || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
 
         roomCodeDisplay.textContent = roomCode;
         roomNameDisplay.textContent = roomName;
 
 
-        // Odaya katılma isteği gönder
+        // Odaya katlma istei gönder
         socket.emit('joinRoom', { 
             roomCode: roomCode, 
             username: username, 
-            videoUrl: initialVideoUrl // Oda kurucusu kendi video URL'sini gönderir. Katılımcı sadece boş bir string gönderebilir.
+            videoUrl: videoUrl 
         });
 
-        // Odayı paylaşma butonu
+        // Oday paylama butonu
         function copyRoomCode() {
             navigator.clipboard.writeText(roomCode)
                 .then(() => {
-                    alert(`Oda Kodu kopyalandı: ${roomCode}. Arkadaşlarınla paylaş!`);
+                    alert(`Oda Kodu kopyaland: ${roomCode}. Arkadalarnla payla!`);
                 })
                 .catch(err => {
-                    console.error('Kopyalama başarısız oldu:', err);
+                    console.error('Kopyalama baarsz oldu:', err);
                 });
         }
 
-        // --- VİDEO OYNATICI VE KONTROLLER ---
+        // --- VDEO OYNATICI VE KONTROLLER ---
 
-        // 1. Oda durumu alındığında videoyu ayarla ve senkronize et (Sunucudan gelen video URL'si kullanılır)
+        // 1. Oda durumu alndnda videoyu ayarla ve senkronize et
         socket.on('roomState', (state) => {
-            // Sunucudan gelen, odanın kesin video URL'si budur.
-            const finalVideoUrl = state.videoUrl; 
-            
-            // Eğer video URL zaten ayarlanmışsa veya boşsa tekrar yüklemeye çalışma
-            if (!finalVideoUrl || video.src.includes(finalVideoUrl)) return;
-
-            // M3U8 (HLS) desteği
-            if (finalVideoUrl.includes('.m3u8') && Hls.isSupported()) {
+            // M3U8 (HLS) destei ekleyelim
+            if (videoUrl.includes('.m3u8') && Hls.isSupported()) {
                 const hls = new Hls();
-                hls.loadSource(finalVideoUrl); 
+                hls.loadSource(videoUrl);
                 hls.attachMedia(video);
                 hls.on(Hls.Events.MANIFEST_PARSED, function() {
                     applyRoomState(state);
                 });
             } else {
-                // MP4 veya diğer doğrudan formatlar
-                video.src = finalVideoUrl; 
+                // MP4 veya dier dorudan formatlar
+                video.src = videoUrl;
                 video.addEventListener('loadedmetadata', () => {
                     applyRoomState(state);
-                }, { once: true }); // metadata sadece bir kere yüklensin
+                });
             }
         });
 
         function applyRoomState(state) {
-            // Sunucudan gelen zamanı uygula, 0.5 saniye ileri atlayarak gecikmeyi telafi et
-            if (video.readyState >= 2) { // Video metadata yüklüyse
-                video.currentTime = state.currentTime + 0.5; 
-                durationDisplay.textContent = formatTime(video.duration);
-                
-                // Oynatma durumunu uygula
-                if (state.isPlaying) {
-                    video.play().catch(e => console.error("Oynatma hatası:", e));
-                    updatePlayPauseButton('pause');
-                } else {
-                    video.pause();
-                    updatePlayPauseButton('play');
-                }
+            // Sunucudan gelen zaman uygula, 0.5 saniye ileri atlayarak gecikmeyi telafi et
+            video.currentTime = state.currentTime + 0.5; 
+            durationDisplay.textContent = formatTime(video.duration);
+            
+            // Oynatma durumunu uygula
+            if (state.isPlaying) {
+                video.play();
+                updatePlayPauseButton('pause');
+            } else {
+                video.pause();
+                updatePlayPauseButton('play');
             }
         }
         
-        // 2. Kontrol butonları
-        let isSeeking = false; 
+        // 2. Kontrol butonlar
+        let isSeeking = false; // Sunucuya gereksiz 'seek' eventlerini göndermeyi engeller
         
         playPauseBtn.addEventListener('click', () => {
             if (video.paused) {
                 video.play();
-                // Sunucuya oynat komutunu ve anlık zamanı gönder
                 socket.emit('videoPlay', video.currentTime);
             } else {
                 video.pause();
-                // Sunucuya duraklat komutunu ve anlık zamanı gönder
                 socket.emit('videoPause', video.currentTime);
             }
         });
 
         progressBar.addEventListener('mousedown', () => {
             isSeeking = true;
-            video.pause(); // Arama sırasında video akışını durdur
+            video.pause(); // Arama srasnda video akn durdur
         });
         
         progressBar.addEventListener('mouseup', () => {
             isSeeking = false;
             const time = (progressBar.value / 100) * video.duration;
             video.currentTime = time;
-            // Sunucuya arama (seek) olayını gönder
-            socket.emit('videoSeek', time); 
-            
-            // Aramadan sonra oynatma durumunu koru (Eğer video daha önce oynuyorsa devam et)
-            // NOT: Bu kısmı sunucunun syncPlay/syncPause olayları halledeceği için local play/pause gerekmez.
+            socket.emit('videoSeek', time); // Sunucuya sadece son deeri gönder
+            // Aramadan sonra oynatma durumunu koru
+            if (!video.paused) {
+                 video.play();
+            }
         });
 
         progressBar.addEventListener('input', () => {
@@ -250,10 +239,10 @@
         });
 
 
-        // 3. Senkronizasyon Olayları (Sunucudan gelenler)
+        // 3. Senkronizasyon Olaylar (Sunucudan gelenler)
         socket.on('syncPlay', (time) => {
             video.currentTime = time;
-            video.play().catch(e => console.error("Sync Play hatası:", e));
+            video.play();
             updatePlayPauseButton('pause');
         });
 
@@ -264,13 +253,13 @@
         });
 
         socket.on('syncSeek', (time) => {
-            // Kullanıcı zaten arama yapıyorsa bu olayı yok say
+            // Kullanc zaten arama yapyorsa bu olay yok say
             if (!isSeeking) {
                 video.currentTime = time;
             }
         });
 
-        // 4. Zaman ve İlerleme Çubuğu Güncellemeleri
+        // 4. Zaman ve lerleme Çubuu Güncellemeleri
         video.addEventListener('timeupdate', () => {
             if (!isSeeking) {
                 const progress = (video.currentTime / video.duration) * 100;
@@ -279,17 +268,17 @@
             currentTimeDisplay.textContent = formatTime(video.currentTime);
         });
 
-        // Sesli Sohbet Yer Tutucusu
+        // Sesli Sohbet (WebRTC gerektirir, bu sadece görsel bir yer tutucudur)
         let voiceEnabled = false;
         voiceToggle.addEventListener('click', () => {
             voiceEnabled = !voiceEnabled;
             voiceToggle.classList.toggle('bg-green-500', voiceEnabled);
             voiceToggle.classList.toggle('bg-gray-700', !voiceEnabled);
             const status = voiceEnabled ? 'AÇIK' : 'KAPALI';
-            console.log(`Sesli Sohbet: ${status}`);
+            alert(`Sesli Sohbet: ${status} (Bu özellik u an sadece görsel olarak ayarlanmtr.)`);
         });
 
-        // --- SOHBET İŞLEVİ ---
+        // --- SOHBET LEV ---
 
         sendMessageBtn.addEventListener('click', sendChatMessage);
         messageInput.addEventListener('keypress', (e) => {
@@ -301,7 +290,6 @@
         function sendChatMessage() {
             const message = messageInput.value.trim();
             if (message) {
-                // Mesajı sunucuya gönder
                 socket.emit('chatMessage', message); 
                 messageInput.value = '';
             }
@@ -332,16 +320,16 @@
         });
 
 
-        // --- KATILIMCI LİSTESİ YÖNETİMİ ---
+        // --- KATILIMCI LSTES YÖNETM ---
 
         socket.on('userJoined', (data) => {
             updateParticipantsList(data.users);
-            addSystemMessage(`${data.username} odaya katıldı.`);
+            addSystemMessage(`${data.username} odaya katld.`);
         });
 
         socket.on('userLeft', (data) => {
             updateParticipantsList(data.users);
-            addSystemMessage(`${data.username} odadan ayrıldı.`);
+            addSystemMessage(`${data.username} odadan ayrld.`);
         });
 
         function updateParticipantsList(users) {
@@ -377,10 +365,10 @@
         }
 
 
-        // --- YARDIMCI FONKSİYONLAR ---
+        // --- YARDIMCI FONKSYONLAR ---
 
         function formatTime(seconds) {
-            if (isNaN(seconds) || seconds < 0) return '0:00';
+            if (isNaN(seconds)) return '0:00';
             const mins = Math.floor(seconds / 60);
             const secs = Math.floor(seconds % 60);
             return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
@@ -392,12 +380,12 @@
             } else {
                 playPauseBtn.innerHTML = '<i data-feather="pause" class="w-5 h-5"></i>';
             }
-            // Feather iconlarını yeniden yükle
-            feather.replace(); 
+            feather.replace();
         }
 
         // Initialize feather icons
         feather.replace();
     </script>
 </body>
-</html>
+    </html>
+                                                                       
